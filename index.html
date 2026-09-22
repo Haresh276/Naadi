@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Naadi: needle-free anaemia and vitals screening prototype</title>
+<meta name="description" content="Naadi measures heart rate, breathing rate and heart-rate variability from your phone camera, entirely on your device.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EEF3F1; --panel:#FFFFFF; --ink:#1C2A2D; --muted:#5E6F72; --line:#CFDCD8;
+  --pulse:#C8323A; --teal:#0E6E6A; --ok:#1F8A4C; --warn:#B7791F;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#0F1A1C; --panel:#162427; --ink:#E6EFEE; --muted:#93A6A8; --line:#27393C; --pulse:#F0505A; --teal:#3FB6AE; --ok:#4CC27E; --warn:#E0A94A; }
+}
+:root[data-theme="dark"]{ --bg:#0F1A1C; --panel:#162427; --ink:#E6EFEE; --muted:#93A6A8; --line:#27393C; --pulse:#F0505A; --teal:#3FB6AE; --ok:#4CC27E; --warn:#E0A94A; }
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
+main{max-width:560px;margin:0 auto;padding:20px 18px 40px}
+h1{font-size:2.6rem;line-height:1;margin:6px 0 6px;font-weight:800;letter-spacing:-0.02em}
+.lede{color:var(--muted);margin:0 0 18px;font-size:1.02rem}
+.stage{position:relative;background:#000;border-radius:22px;overflow:hidden;aspect-ratio:3/4;max-height:62vh;margin:0 auto}
+video,#view{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+video{opacity:0}
+.guide{position:absolute;left:50%;top:46%;width:58%;height:66%;transform:translate(-50%,-50%);border:3px dashed rgba(255,255,255,.75);border-radius:50%;pointer-events:none}
+.guide.hidden{display:none}
+.readout{position:absolute;left:0;right:0;bottom:0;padding:14px 16px;background:linear-gradient(transparent,rgba(0,0,0,.78));color:#fff;display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+.bpm{font-size:3.4rem;font-weight:800;line-height:.9;font-variant-numeric:tabular-nums}
+.bpm small{font-size:1rem;font-weight:600;margin-left:4px;opacity:.85}
+.status{font-size:.92rem;text-align:right;max-width:55%}
+.heart{display:inline-block;color:var(--pulse);transition:transform .12s}
+.modes{display:flex;gap:8px;margin:16px 0 10px}
+button{font:inherit;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);padding:11px 14px;border-radius:12px;cursor:pointer;flex:1;font-weight:600}
+button[aria-pressed="true"]{border-color:var(--teal);background:var(--teal);color:#fff}
+button:focus-visible{outline:3px solid var(--pulse);outline-offset:2px}
+#start{width:100%;background:var(--pulse);border-color:var(--pulse);color:#fff;font-size:1.1rem;padding:14px}
+#wave{width:100%;height:80px;display:block;background:var(--panel);border:1.5px solid var(--line);border-radius:14px;margin-top:12px}
+.meter{height:8px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:10px}
+.meter i{display:block;height:100%;width:0;background:var(--warn);transition:width .4s}
+.hint{color:var(--muted);font-size:.9rem;margin:8px 0 0}
+section{margin-top:28px}
+h2{font-size:1.25rem;margin:0 0 8px}
+p{margin:0 0 10px}
+.fine{font-size:.85rem;color:var(--muted);border-top:1.5px solid var(--line);padding-top:12px;margin-top:28px}
+.err{background:var(--panel);border:1.5px solid var(--pulse);border-radius:12px;padding:12px;margin-top:12px;display:none}
+@media (prefers-reduced-motion: reduce){.heart{transition:none}}
+
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:12px}
+.stat{background:var(--panel);border:1.5px solid var(--line);border-radius:14px;padding:10px 12px}
+.stat b{display:block;font-size:1.6rem;line-height:1.1;font-variant-numeric:tabular-nums}
+.stat span{font-size:.8rem;color:var(--muted)}
+.track{font-size:.85rem;color:var(--muted);margin:10px 0 0}
+.log{background:var(--panel);border:1.5px solid var(--line);border-radius:16px;padding:14px;margin-top:10px}
+.row{display:flex;gap:8px;margin-top:8px}
+input{font:inherit;flex:1;min-width:0;padding:11px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.tbl{overflow-x:auto;margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:.9rem;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-weight:600}
+.small{flex:0 0 auto}
+
+select{font:inherit;padding:11px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink)}
+#capture{width:100%;margin-top:8px;background:var(--teal);border-color:var(--teal);color:#fff}
+.eyeres{display:flex;gap:12px;align-items:center;margin-top:10px}
+.swatch{width:64px;height:64px;border-radius:14px;border:1.5px solid var(--line);flex:0 0 auto}
+.eyeres b{display:block;font-size:1.3rem}
+.eyeres span{font-size:.88rem;color:var(--muted)}
+.warnline{color:var(--pulse);font-weight:600;margin:0}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <h1>Naadi</h1>
+  <p class="lede">Needle-free anaemia and vitals screening for ASHA workers, on one phone. This prototype reads your pulse, breathing and eyelid colour through the camera. Nothing is uploaded; all processing happens on your device.</p>
+
+  <div class="stage">
+    <video id="video" playsinline muted></video>
+    <canvas id="view"></canvas>
+    <div class="guide" id="guide"></div>
+    <div class="readout">
+      <div class="bpm"><span class="heart" id="heart">&#9829;</span> <span id="bpm">--</span><small>bpm</small></div>
+      <div class="status" id="status">Choose a mode and tap Start</div>
+    </div>
+  </div>
+
+  <div class="modes" role="group" aria-label="Measurement mode">
+    <button id="mFace" aria-pressed="true">Face</button>
+    <button id="mFinger" aria-pressed="false">Fingertip</button>
+    <button id="mEye" aria-pressed="false">Eyelid</button>
+  </div>
+  <button id="start">Start measuring</button>
+  <button id="capture" hidden disabled>Capture eyelid colour</button>
+  <p class="track" id="track">Face tracking loads on start</p>
+  <p class="hint" id="hint">Face mode: sit still, face a window or lamp, keep your whole face on screen. First reading in about 10 seconds; breathing needs about 25 seconds.</p>
+  <div class="err" id="err"></div>
+
+  <div id="pulsePanel">
+    <canvas id="wave" aria-label="Live pulse waveform"></canvas>
+    <div class="meter" aria-label="Signal quality"><i id="q"></i></div>
+    <div class="stats">
+      <div class="stat"><b id="br">--</b><span>breaths per minute</span></div>
+      <div class="stat"><b id="hrv">--</b><span>HRV (RMSSD, ms)</span></div>
+      <div class="stat"><b id="stress" style="font-size:1rem;line-height:1.3">Needs a clean signal</b><span>stress estimate</span></div>
+      <div class="stat"><b id="pi">--</b><span>perfusion index % (fingertip)</span></div>
+    </div>
+    <div class="row">
+      <select id="lang" aria-label="Language for spoken result">
+        <option value="te-IN">Telugu</option><option value="hi-IN">Hindi</option><option value="ta-IN">Tamil</option><option value="en-IN">English</option>
+      </select>
+      <button id="speak">Speak result</button>
+    </div>
+  </div>
+
+  <div id="eyePanel" hidden>
+    <div class="log">
+      <div id="eyeOut"><p class="hint" style="margin:0">Capture shows the eyelid colour after correcting for light using the white paper.</p></div>
+      <div class="row">
+        <input id="hb" type="number" step="0.1" inputmode="decimal" placeholder="Lab haemoglobin g/dL (optional)" aria-label="Reference haemoglobin in grams per decilitre">
+        <button id="eyeLogBtn" class="small" disabled>Log capture</button>
+      </div>
+      <p class="hint" id="eyeCount">No eyelid captures logged yet.</p>
+      <div class="row"><button id="eyeCsv">Download eyelid CSV</button></div>
+    </div>
+  </div>
+
+  <section>
+    <h2>Check it against a real device</h2>
+    <div class="log">
+      <p>Wear a pulse oximeter (or count your pulse for 30 seconds and double it). While Naadi shows a reading, type the reference number and log it. Naadi builds its own accuracy table.</p>
+      <div class="row">
+        <input id="ref" type="number" inputmode="numeric" min="30" max="220" placeholder="Reference bpm" aria-label="Reference heart rate in bpm">
+        <button id="logBtn" class="small" disabled>Log reading</button>
+      </div>
+      <p class="hint" id="mae">No readings logged yet.</p>
+      <div class="tbl"><table><thead><tr><th>Mode</th><th>Naadi</th><th>Reference</th><th>Error</th></tr></thead><tbody id="logBody"></tbody></table></div>
+      <div class="row"><button id="csv">Download CSV</button><button id="clear">Clear log</button></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>How it works</h2>
+    <p>Face mode: an on-device face tracker places three regions on your forehead and cheeks, and the POS remote photoplethysmography method separates the pulse from lighting changes. The red glow is your own pulse, amplified so you can see it.</p>
+    <p>Fingertip mode: the rear camera and flash read the pulse through your fingertip and also give a perfusion index, the strength of blood flow in the finger, which is one of the signals used for anaemia research.</p>
+    <p>Eyelid mode: the plain white paper tells Naadi what true white looks like under your current light, so the eyelid colour can be corrected before it is measured. Paler inner eyelids are a classic sign of anaemia. This prototype measures calibrated colour; the hackathon build fuses it with the fingertip signal into a risk band.</p>
+  </section>
+
+  <p class="fine">Prototype for the iQOO Hackathon 2026 by Haresh G. Screening research prototype, not a medical device. It does not diagnose anaemia or any condition. Do not use it to make health decisions.</p>
+</main>
+<script>
+// ---- Pure signal-processing helpers (no DOM) ----
+var FS = 30;
+function mean(a){var s=0;for(var i=0;i<a.length;i++)s+=a[i];return s/a.length}
+function std(a){var m=mean(a),s=0;for(var i=0;i<a.length;i++)s+=(a[i]-m)*(a[i]-m);return Math.sqrt(s/a.length)||1e-9}
+function detrend(a,win){var out=[],half=Math.floor(win/2);for(var i=0;i<a.length;i++){var s=0,n=0;for(var k=Math.max(0,i-half);k<=Math.min(a.length-1,i+half);k++){s+=a[k];n++;}out.push(a[i]-s/n);}return out}
+function linDetrend(a){var n=a.length,mx=(n-1)/2,my=mean(a),num=0,den=0;for(var i=0;i<n;i++){num+=(i-mx)*(a[i]-my);den+=(i-mx)*(i-mx);}var b=num/(den||1);return a.map(function(v,i){return v-my-b*(i-mx)})}
+function smooth(a,k){var out=[];for(var i=0;i<a.length;i++){var s=0,n=0;for(var j=Math.max(0,i-k);j<=Math.min(a.length-1,i+k);j++){s+=a[j];n++;}out.push(s/n);}return out}
+function resample(arr,fs){var t0=arr[0].t,t1=arr[arr.length-1].t,out=[],j=0;for(var t=t0;t<=t1;t+=1000/fs){while(j<arr.length-2&&arr[j+1].t<t)j++;var a=arr[j],c=arr[Math.min(j+1,arr.length-1)];var f=Math.min(1,Math.max(0,(t-a.t)/Math.max(1,(c.t-a.t))));out.push(a.v.map(function(x,i){return x+(c.v[i]-x)*f}))}return out}
+function spectrum(sig,fs,fmin,fmax,step,hw){var best=0,bestF=0,total=0,n=sig.length,pw=[];for(var f=fmin;f<=fmax+1e-9;f+=step){var re=0,im=0,w=2*Math.PI*f/fs;for(var i=0;i<n;i++){var h=0.5-0.5*Math.cos(2*Math.PI*i/(n-1));re+=sig[i]*h*Math.cos(w*i);im-=sig[i]*h*Math.sin(w*i);}var p=re*re+im*im;pw.push([f,p]);total+=p;if(p>best){best=p;bestF=f;}}var near=0;pw.forEach(function(x){if(Math.abs(x[0]-bestF)<=hw)near+=x[1]});return{f:bestF,snr:near/Math.max(1e-12,total-near)}}
+function posSignal(rgb){var R=rgb.map(function(x){return x[0]}),G=rgb.map(function(x){return x[1]}),B=rgb.map(function(x){return x[2]});var mr=mean(R),mg=mean(G),mb=mean(B),s1=[],s2=[];for(var i=0;i<R.length;i++){var r=R[i]/mr,g=G[i]/mg,b=B[i]/mb;s1.push(g-b);s2.push(g+b-2*r);}var al=std(s1)/std(s2);return smooth(detrend(s1.map(function(x,i){return x+al*s2[i]}),FS),1)}
+function fingerSignal(rgb){return smooth(detrend(rgb.map(function(x){return -x[0]}),FS),1)}
+// HRV: RMSSD in ms from pulse signal, given expected heart rate (bpm)
+function rmssd(sig,bpm){var minD=Math.floor(0.6*FS*60/bpm),peaks=[];for(var i=1;i<sig.length-1;i++){if(sig[i]>sig[i-1]&&sig[i]>=sig[i+1]&&sig[i]>0){var a=sig[i-1],b=sig[i],c=sig[i+1],den=(a-2*b+c),off=den?0.5*(a-c)/den:0;var p={t:(i+off)*1000/FS,v:b};if(peaks.length&&p.t-peaks[peaks.length-1].t<minD*1000/FS){if(p.v>peaks[peaks.length-1].v)peaks[peaks.length-1]=p;}else peaks.push(p);}}
+  var ibi=[];for(var k=1;k<peaks.length;k++)ibi.push(peaks[k].t-peaks[k-1].t);if(ibi.length<6)return null;var srt=ibi.slice().sort(function(x,y){return x-y}),med=srt[Math.floor(srt.length/2)];ibi=ibi.filter(function(x){return Math.abs(x-med)<0.25*med});if(ibi.length<6)return null;var s=0;for(var k=1;k<ibi.length;k++)s+=Math.pow(ibi[k]-ibi[k-1],2);return Math.sqrt(s/(ibi.length-1))}
+function breathing(series,fs){var d=linDetrend(series);return spectrum(d,fs,0.13,0.6,0.01,0.04)}
+// sRGB (0-255) -> CIELAB (D65)
+function toLab(r,g,b){function lin(c){c/=255;return c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4)}var R=lin(r),G=lin(g),B=lin(b);
+  var X=(R*0.4124+G*0.3576+B*0.1805)/0.95047,Y=(R*0.2126+G*0.7152+B*0.0722),Z=(R*0.0193+G*0.1192+B*0.9505)/1.08883;
+  function f(t){return t>0.008856?Math.cbrt(t):7.787*t+16/116}var fx=f(X),fy=f(Y),fz=f(Z);return [116*fy-16,500*(fx-fy),200*(fy-fz)]}
+// white-card calibration: scale eyelid colour so the card reads as neutral white (235)
+function calibrate(eye,card){return eye.map(function(v,i){return Math.max(0,Math.min(255,v*235/Math.max(1,card[i])))})}
+function pct(a,p){var s=a.slice().sort(function(x,y){return x-y});return s[Math.min(s.length-1,Math.max(0,Math.floor(p*(s.length-1))))]}
+// fingertip perfusion index (%) from raw red-channel series
+function perfusion(red){var dc=mean(red),d=detrend(red,FS);return (pct(d,0.95)-pct(d,0.05))/Math.max(1,dc)*100}
+
+</script>
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var video=$('video'), view=$('view'), vctx=view.getContext('2d',{willReadFrequently:true});
+  var wave=$('wave'), wctx=wave.getContext('2d');
+  var bpmEl=$('bpm'), statusEl=$('status'), heart=$('heart'), qEl=$('q'), hint=$('hint'), err=$('err'), guide=$('guide');
+  var brEl=$('br'), hrvEl=$('hrv'), stressEl=$('stress'), trackEl=$('track');
+  var mFace=$('mFace'), mFinger=$('mFinger'), mEye=$('mEye'), startBtn=$('start'), capBtn=$('capture'), eyeOut=$('eyeOut'), piEl=$('pi'), eyePanel=$('eyePanel'), pulsePanel=$('pulsePanel');
+  var lastEye=null;
+  var mode='face', stream=null, running=false, raf=0, samples=[], longS=[], history=[], glow=0, lastCalc=0, lastBr=0;
+  var currentBpm=null, WIN=12, LONG=32;
+  var small=document.createElement('canvas'), sctx=small.getContext('2d',{willReadFrequently:true});
+
+  // ---------- face tracker (MediaPipe, loaded on demand; falls back to fixed regions) ----------
+  var tracker=null, trackerState='idle', lastBoxes=null, faceSeen=0, frameNo=0, lastDetectT=0;
+  var MP='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+  async function loadTracker(){
+    if(trackerState!=='idle') return;
+    trackerState='loading'; trackEl.textContent='Loading face tracker...';
+    try{
+      var vision=await import(MP+'/vision_bundle.mjs');
+      var fileset=await vision.FilesetResolver.forVisionTasks(MP+'/wasm');
+      var opts=function(d){return {baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',delegate:d},runningMode:'VIDEO',numFaces:1}};
+      try{ tracker=await vision.FaceLandmarker.createFromOptions(fileset,opts('GPU')); }
+      catch(e){ tracker=await vision.FaceLandmarker.createFromOptions(fileset,opts('CPU')); }
+      trackerState='ready'; trackEl.textContent='Face tracking on';
+    }catch(e){ trackerState='failed'; trackEl.textContent='Fixed regions (tracker unavailable)'; }
+  }
+  function cropRect(vw,vh,ar){var sw=vw,sh=vw/ar;if(sh>vh){sh=vh;sw=vh*ar;}return {x:(vw-sw)/2,y:(vh-sh)/2,w:sw,h:sh}}
+  function fixedBoxes(vw,vh){
+    if(mode==='finger') return [[0.2,0.2,0.6,0.6]];
+    var c=cropRect(vw,vh,3/4), rel=[[0.38,0.20,0.24,0.10],[0.28,0.44,0.14,0.12],[0.58,0.44,0.14,0.12]];
+    return rel.map(function(b){return [(c.x+b[0]*c.w)/vw,(c.y+b[1]*c.h)/vh,b[2]*c.w/vw,b[3]*c.h/vh]});
+  }
+  function getBoxes(vw,vh){
+    if(mode==='face' && tracker){
+      frameNo++;
+      var now=performance.now();
+      if(frameNo%2===0 && now>lastDetectT){
+        lastDetectT=now;
+        try{
+          var r=tracker.detectForVideo(video,now);
+          if(r.faceLandmarks&&r.faceLandmarks.length){
+            var L=r.faceLandmarks[0], fw=Math.abs(L[454].x-L[234].x), fh=Math.abs(L[152].y-L[10].y);
+            var fx=(L[10].x+L[151].x)/2, fy=(L[10].y+L[151].y)/2;
+            lastBoxes=[[fx-fw*0.15,fy-fh*0.05,fw*0.30,fh*0.10],[L[205].x-fw*0.08,L[205].y-fh*0.06,fw*0.16,fh*0.12],[L[425].x-fw*0.08,L[425].y-fh*0.06,fw*0.16,fh*0.12]];
+            faceSeen=now;
+          }
+        }catch(e){}
+      }
+      if(lastBoxes && now-faceSeen<700) return {boxes:lastBoxes,tracked:true};
+      return {boxes:null,tracked:false};
+    }
+    return {boxes:fixedBoxes(vw,vh),tracked:false};
+  }
+  function roiMeans(boxes,vw,vh){
+    var w=120,h=Math.round(120*vh/vw); if(small.width!==w||small.height!==h){small.width=w;small.height=h;}
+    sctx.drawImage(video,0,0,w,h);
+    var r=0,g=0,b=0,n=0;
+    for(var k=0;k<boxes.length;k++){
+      var bx=boxes[k], x0=Math.max(0,Math.floor(bx[0]*w)), y0=Math.max(0,Math.floor(bx[1]*h));
+      var bw=Math.max(1,Math.min(w-x0,Math.floor(bx[2]*w))), bh=Math.max(1,Math.min(h-y0,Math.floor(bx[3]*h)));
+      var d=sctx.getImageData(x0,y0,bw,bh).data;
+      for(var i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];b+=d[i+2];n++;}
+    }
+    return n?[r/n,g/n,b/n]:null;
+  }
+
+  // ---------- modes / start / stop ----------
+  function setMode(m){
+    mode=m; mFace.setAttribute('aria-pressed',m==='face'); mFinger.setAttribute('aria-pressed',m==='finger'); mEye.setAttribute('aria-pressed',m==='eye');
+    eyePanel.hidden=(m!=='eye'); pulsePanel.hidden=(m==='eye'); capBtn.hidden=(m!=='eye');
+    guide.classList.toggle('hidden',m!=='face');
+    hint.textContent= m==='face' ? 'Face mode: sit still, face a window or lamp, keep your whole face on screen. First reading in about 10 seconds; breathing needs about 25 seconds.'
+      : m==='finger' ? 'Fingertip mode: rest your fingertip lightly over the rear camera and flash. Do not press hard. First reading in about 8 seconds.'
+      : 'Eyelid mode: hold a plain white paper in the top box and a gently pulled-down lower eyelid (the pink inner rim) in the bottom box, about 15 cm away, then tap Capture.';
+    trackEl.textContent = m==='face' ? (trackerState==='ready'?'Face tracking on':trackerState==='failed'?'Fixed regions (tracker unavailable)':'Face tracking loads on start') : (m==='finger'?'Fingertip mode':'Eyelid colour mode');
+    if(running){stop();start();}
+  }
+  mFace.onclick=function(){setMode('face')}; mFinger.onclick=function(){setMode('finger')}; mEye.onclick=function(){setMode('eye')};
+  startBtn.onclick=function(){running?stop():start()};
+  function showErr(msg){err.style.display='block';err.textContent=msg;statusEl.textContent='Camera not available';}
+  function resetReadings(){samples=[];longS=[];history=[];currentBpm=null;bpmEl.textContent='--';brEl.textContent='--';hrvEl.textContent='--';piEl.textContent='--';stressEl.textContent='Needs a clean signal';qEl.style.width='0';updateLogBtn();}
+
+  async function start(){
+    err.style.display='none';
+    if(!window.isSecureContext){showErr('The camera only works on an https:// link.');return;}
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){showErr('This browser cannot open the camera. Use Chrome on your phone.');return;}
+    try{ stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:mode==='face'?'user':'environment',width:{ideal:640},height:{ideal:480},frameRate:{ideal:30}}}); }
+    catch(e){showErr('Camera access was blocked ('+e.name+'). Allow camera permission for this site, then tap Start again.');return;}
+    video.srcObject=stream; try{await video.play();}catch(e){}
+    if(mode!=='face'){ var tr=stream.getVideoTracks()[0]; try{await tr.applyConstraints({advanced:[{torch:true}]});}catch(e){hint.textContent= mode==='finger'?'Flash could not be turned on. Use a bright light behind your fingertip instead.':'Flash could not be turned on. Use even daylight instead.';} }
+    if(mode==='face') loadTracker();
+    resetReadings(); running=true; startBtn.textContent='Stop'; statusEl.textContent= mode==='eye'?'Line up the card and eyelid, then tap Capture':'Hold still, reading your pulse...'; capBtn.disabled=(mode!=='eye');
+    loop();
+  }
+  function stop(){
+    running=false; cancelAnimationFrame(raf);
+    if(stream){stream.getTracks().forEach(function(t){t.stop()});stream=null;}
+    startBtn.textContent='Start measuring'; statusEl.textContent='Stopped'; glow=0; capBtn.disabled=true;
+  }
+
+  // ---------- main loop ----------
+  function loop(){
+    if(!running) return;
+    raf=requestAnimationFrame(loop);
+    var now=performance.now(), vw=video.videoWidth, vh=video.videoHeight; if(!vw) return;
+    if(mode==='eye'){ glow=0; draw(vw,vh,{boxes:null,tracked:false}); drawEyeGuides(); return; }
+    var sel=getBoxes(vw,vh);
+    draw(vw,vh,sel);
+    if(!sel.boxes){ statusEl.textContent='Face not found. Keep your face on screen.'; if(samples.length&&now-samples[samples.length-1].t>1500){samples=[];longS=[];} return; }
+    var m=roiMeans(sel.boxes,vw,vh); if(!m) return;
+    samples.push({t:now,v:m}); longS.push({t:now,v:[mode==='face'?m[1]:m[0]]});
+    while(samples.length&&now-samples[0].t>WIN*1000) samples.shift();
+    while(longS.length&&now-longS[0].t>LONG*1000) longS.shift();
+    if(now-lastCalc<250) return; lastCalc=now;
+    var span=(samples[samples.length-1].t-samples[0].t)/1000;
+    if(samples.length<40||span<4){statusEl.textContent='Hold still, reading your pulse...';return;}
+    var rgb=resample(samples,FS), sig= mode==='face'?posSignal(rgb):fingerSignal(rgb);
+    drawWave(sig);
+    var sd=std(sig); glow=Math.max(0,Math.min(1,sig[sig.length-1]/(2*sd)));
+    heart.style.transform='scale('+(1+0.25*glow).toFixed(2)+')';
+    if(mode==='finger'){ var reds=rgb.slice(-FS*5).map(function(x){return x[0]}); var piv=perfusion(reds); if(mean(reds)>=60 && piv>0.02 && piv<20) piEl.textContent=piv.toFixed(2); }
+    if(mode==='finger'&&mean(rgb.map(function(x){return x[0]}))<60){statusEl.textContent='Cover the camera and flash with your fingertip';qEl.style.width='5%';return;}
+    if(span<7){statusEl.textContent='Almost there...';return;}
+    var sp=spectrum(sig,FS,0.7,3.0,0.01,0.08), q=Math.min(1,sp.snr/1.2);
+    qEl.style.width=Math.round(q*100)+'%'; qEl.style.background=q>0.55?'var(--ok)':(q>0.3?'var(--warn)':'var(--pulse)');
+    if(q>0.3){
+      history.push(sp.f*60); if(history.length>9) history.shift();
+      var s=history.slice().sort(function(a,b){return a-b}); currentBpm=Math.round(s[Math.floor(s.length/2)]);
+      bpmEl.textContent=currentBpm; statusEl.textContent=q>0.55?'Good signal':'Weak signal, keep still';
+      if(q>0.55 && span>=10){
+        var rm=rmssd(sig,currentBpm);
+        if(rm && rm>5 && rm<200){ hrvEl.textContent=Math.round(rm); stressEl.textContent= rm>=50?'Relaxed':(rm>=25?'Moderate':'Elevated'); }
+      }
+    } else statusEl.textContent= mode==='face'?'Signal too noisy. Keep still and face the light.':'Signal too noisy. Keep your finger still.';
+    updateLogBtn();
+    if(now-lastBr>1000){ lastBr=now; var lspan=(longS[longS.length-1].t-longS[0].t)/1000;
+      if(lspan>=22){ var ser=resample(longS,10).map(function(x){return x[0]}); var b=breathing(ser,10);
+        brEl.textContent = b.snr>0.35 ? Math.round(b.f*60) : '--'; } }
+  }
+
+  function draw(vw,vh,sel){
+    var W=Math.round(view.clientWidth*devicePixelRatio), H=Math.round(view.clientHeight*devicePixelRatio);
+    if(view.width!==W||view.height!==H){view.width=W;view.height=H;}
+    var c=cropRect(vw,vh,W/H), mirror=mode==='face';
+    vctx.save(); if(mirror){vctx.translate(W,0);vctx.scale(-1,1);}
+    vctx.drawImage(video,c.x,c.y,c.w,c.h,0,0,W,H); vctx.restore();
+    if(glow>0){vctx.fillStyle='rgba(220,30,45,'+(0.24*glow).toFixed(3)+')';vctx.fillRect(0,0,W,H);}
+    if(sel.boxes && mode==='face'){
+      vctx.strokeStyle= sel.tracked?'rgba(120,255,200,.9)':'rgba(255,255,255,.7)'; vctx.lineWidth=2*devicePixelRatio;
+      sel.boxes.forEach(function(b){ var x=(b[0]*vw-c.x)/c.w*W, y=(b[1]*vh-c.y)/c.h*H, w=b[2]*vw/c.w*W, h=b[3]*vh/c.h*H; if(mirror)x=W-x-w; vctx.strokeRect(x,y,w,h); });
+    }
+    guide.classList.toggle('hidden', mode!=='face' || !!tracker);
+  }
+  function drawWave(sig){
+    var W=wave.clientWidth*devicePixelRatio,H=wave.clientHeight*devicePixelRatio; if(wave.width!==W){wave.width=W;wave.height=H;}
+    wctx.clearRect(0,0,W,H); var n=Math.min(sig.length,FS*6),seg=sig.slice(-n),sd=std(seg),m=mean(seg);
+    wctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--pulse').trim()||'#C8323A';
+    wctx.lineWidth=2.5*devicePixelRatio; wctx.beginPath();
+    for(var i=0;i<seg.length;i++){var x=i/(seg.length-1)*W,y=H/2-((seg[i]-m)/(3*sd))*(H/2-6);if(i)wctx.lineTo(x,y);else wctx.moveTo(x,y);}
+    wctx.stroke();
+  }
+  document.addEventListener('visibilitychange',function(){if(document.hidden&&running)stop();});
+
+  // ---------- eyelid colour capture (white-card calibrated) ----------
+  var CARD=[0.25,0.10,0.50,0.20], EYE=[0.28,0.52,0.44,0.12];
+  function drawEyeGuides(){
+    var W=view.width,H=view.height; vctx.lineWidth=3*devicePixelRatio; vctx.font=(14*devicePixelRatio)+'px system-ui,sans-serif'; vctx.fillStyle='#fff';
+    vctx.strokeStyle='rgba(255,255,255,.95)'; vctx.strokeRect(CARD[0]*W,CARD[1]*H,CARD[2]*W,CARD[3]*H); vctx.fillText('White paper',CARD[0]*W,CARD[1]*H-6*devicePixelRatio);
+    vctx.strokeStyle='rgba(255,120,140,.95)'; vctx.strokeRect(EYE[0]*W,EYE[1]*H,EYE[2]*W,EYE[3]*H); vctx.fillText('Inner lower eyelid',EYE[0]*W,EYE[1]*H-6*devicePixelRatio);
+  }
+  function regionMean(b){
+    var W=view.width,H=view.height,ix=0.18;
+    var x=Math.floor((b[0]+b[2]*ix)*W), y=Math.floor((b[1]+b[3]*ix)*H), w=Math.max(1,Math.floor(b[2]*(1-2*ix)*W)), h=Math.max(1,Math.floor(b[3]*(1-2*ix)*H));
+    var d=vctx.getImageData(x,y,w,h).data, r=0,g=0,bl=0,n=0,sat=0;
+    for(var i=0;i<d.length;i+=4){ r+=d[i]; g+=d[i+1]; bl+=d[i+2]; n++; if(d[i]>250||d[i+1]>250||d[i+2]>250) sat++; }
+    return {rgb:[r/n,g/n,bl/n], sat:sat/n};
+  }
+  capBtn.onclick=function(){
+    if(!running||mode!=='eye') return;
+    var vw=video.videoWidth, vh=video.videoHeight; if(!vw) return;
+    draw(vw,vh,{boxes:null,tracked:false}); // clean frame without guide strokes
+    var card=regionMean(CARD), eye=regionMean(EYE);
+    var cm=mean(card.rgb), spread=Math.max.apply(null,card.rgb)-Math.min.apply(null,card.rgb);
+    var problem = card.sat>0.3 ? 'The paper is overexposed. Move back a little or turn the flash off.'
+      : cm<90 ? 'Too dark. Move to better light or turn the flash on.'
+      : spread>70 ? 'The top box does not look like white paper. Fill it with plain white paper.'
+      : null;
+    if(problem){ eyeOut.innerHTML=''; var p=document.createElement('p'); p.className='warnline'; p.textContent=problem; eyeOut.appendChild(p); lastEye=null; updateEyeBtn(); return; }
+    var cal=calibrate(eye.rgb,card.rgb), lab=toLab(cal[0],cal[1],cal[2]);
+    lastEye={a:lab[1], L:lab[0], rgb:cal.map(Math.round)};
+    eyeOut.innerHTML='';
+    var sw=document.createElement('div'); sw.className='swatch'; sw.style.background='rgb('+lastEye.rgb.join(',')+')';
+    var t=document.createElement('div');
+    var big=document.createElement('b'); big.textContent='Redness a* = '+lastEye.a.toFixed(1);
+    var sm=document.createElement('span'); sm.textContent='Calibrated eyelid colour, lightness '+lastEye.L.toFixed(0)+'. Paler eyelids score lower. The hackathon build fuses this with fingertip pulse features into an anaemia risk band.';
+    t.appendChild(big); t.appendChild(sm); eyeOut.appendChild(sw); eyeOut.appendChild(t);
+    statusEl.textContent='Captured'; updateEyeBtn();
+  };
+  var hbIn=$('hb'), eyeLogBtn=$('eyeLogBtn'), eyeCsv=$('eyeCsv'), eyeCount=$('eyeCount');
+  function loadEye(){try{return JSON.parse(localStorage.getItem('naadi-eyelog')||'[]')}catch(e){return []}}
+  function updateEyeBtn(){ eyeLogBtn.disabled=!lastEye; }
+  function renderEye(){ var l=loadEye(); eyeCount.textContent= l.length? l.length+' eyelid captures logged on this phone.' : 'No eyelid captures logged yet.'; }
+  eyeLogBtn.onclick=function(){ if(!lastEye) return; var l=loadEye(); var hb=parseFloat(hbIn.value); l.push({time:new Date().toISOString(),a:+lastEye.a.toFixed(2),L:+lastEye.L.toFixed(1),r:lastEye.rgb[0],g:lastEye.rgb[1],b:lastEye.rgb[2],hb:(hb>2&&hb<25)?hb:''}); try{localStorage.setItem('naadi-eyelog',JSON.stringify(l))}catch(e){} hbIn.value=''; lastEye=null; updateEyeBtn(); renderEye(); };
+  eyeCsv.onclick=function(){ var l=loadEye(); var csv='time,a_star,L_star,r,g,b,reference_hb\n'+l.map(function(r){return [r.time,r.a,r.L,r.r,r.g,r.b,r.hb].join(',')}).join('\n'); var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='naadi-eyelid.csv'; document.body.appendChild(a); a.click(); a.remove(); };
+  renderEye();
+
+  // ---------- spoken result in the patient's language ----------
+  var langSel=$('lang'), speakBtn=$('speak');
+  var TPL={
+    'en-IN':{hr:'Your heart rate is {n} beats per minute.',br:'Your breathing rate is {n} breaths per minute.',none:'No reading yet. Please measure first.',end:'This is a screening, not a diagnosis.'},
+    'hi-IN':{hr:'आपकी धड़कन {n} प्रति मिनट है।',br:'आपकी सांस की दर {n} प्रति मिनट है।',none:'अभी कोई रीडिंग नहीं है। पहले माप लें।',end:'यह केवल जांच है, निदान नहीं।'},
+    'te-IN':{hr:'మీ గుండె వేగం నిమిషానికి {n}.',br:'మీ శ్వాస రేటు నిమిషానికి {n}.',none:'ఇంకా రీడింగ్ లేదు. ముందుగా కొలవండి.',end:'ఇది పరీక్ష మాత్రమే, నిర్ధారణ కాదు.'},
+    'ta-IN':{hr:'உங்கள் இதயத் துடிப்பு நிமிடத்திற்கு {n}.',br:'உங்கள் சுவாச விகிதம் நிமிடத்திற்கு {n}.',none:'இன்னும் அளவீடு இல்லை. முதலில் அளவிடுங்கள்.',end:'இது பரிசோதனை மட்டுமே, நோயறிதல் அல்ல.'}
+  };
+  speakBtn.onclick=function(){
+    if(!('speechSynthesis' in window)){ speakBtn.textContent='Speech not supported here'; return; }
+    var L=langSel.value, t=TPL[L], parts=[];
+    if(currentBpm) parts.push(t.hr.replace('{n}',currentBpm));
+    var br=brEl.textContent; if(br && br!=='--') parts.push(t.br.replace('{n}',br));
+    if(!parts.length) parts.push(t.none); parts.push(t.end);
+    var u=new SpeechSynthesisUtterance(parts.join(' ')); u.lang=L; u.rate=0.95;
+    var v=speechSynthesis.getVoices().filter(function(x){return x.lang&&x.lang.replace('_','-').toLowerCase().indexOf(L.slice(0,2).toLowerCase())===0})[0]; if(v) u.voice=v;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  };
+
+  // ---------- accuracy logger ----------
+  var refIn=$('ref'), logBtn=$('logBtn'), logBody=$('logBody'), maeEl=$('mae'), csvBtn=$('csv'), clearBtn=$('clear');
+  function loadLog(){try{return JSON.parse(localStorage.getItem('naadi-log')||'[]')}catch(e){return []}}
+  function saveLog(l){try{localStorage.setItem('naadi-log',JSON.stringify(l))}catch(e){}}
+  function updateLogBtn(){logBtn.disabled=!(currentBpm&&refIn.value);}
+  refIn.oninput=updateLogBtn;
+  function renderLog(){
+    var l=loadLog(); logBody.innerHTML='';
+    l.slice(-6).reverse().forEach(function(r){var tr=document.createElement('tr');[r.mode,r.naadi,r.ref,(r.naadi-r.ref>0?'+':'')+(r.naadi-r.ref)].forEach(function(v){var td=document.createElement('td');td.textContent=v;tr.appendChild(td)});logBody.appendChild(tr);});
+    if(l.length){var mae=l.reduce(function(s,r){return s+Math.abs(r.naadi-r.ref)},0)/l.length; var w5=l.filter(function(r){return Math.abs(r.naadi-r.ref)<=5}).length;
+      maeEl.textContent=l.length+' readings. Average error '+mae.toFixed(1)+' bpm. '+Math.round(100*w5/l.length)+'% within 5 bpm.';}
+    else maeEl.textContent='No readings logged yet.';
+  }
+  logBtn.onclick=function(){var ref=parseInt(refIn.value,10); if(!currentBpm||!(ref>30&&ref<220))return; var l=loadLog(); l.push({time:new Date().toISOString(),mode:mode,naadi:currentBpm,ref:ref}); saveLog(l); refIn.value=''; updateLogBtn(); renderLog();};
+  csvBtn.onclick=function(){var l=loadLog(); var csv='time,mode,naadi_bpm,reference_bpm,error\n'+l.map(function(r){return [r.time,r.mode,r.naadi,r.ref,r.naadi-r.ref].join(',')}).join('\n'); var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='naadi-accuracy.csv'; document.body.appendChild(a); a.click(); a.remove();};
+  clearBtn.onclick=function(){ if(confirm('Delete all logged readings on this phone?')){saveLog([]);renderLog();} };
+  renderLog();
+})();
+
+</script>
+</body>
+</html>
